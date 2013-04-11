@@ -7,25 +7,25 @@ class GroupRows
 
   def initialize(db_glob)
     @glob = db_glob
-    #setup
-    get_dbs
-    extract_sql_from_dbs
-    get_create_sql
-    remove_creates
+    setup
   end
 
   def setup
-    delete = nil
-    create_sql = nil
-    dbs = (get_dbs + get_dbs).map do |f|
-      sql = db_sql(f)
-      create_sql ||= get_create_sql(sql)
-      sql.tap{|o|
-        o = remove_create_sql o, delete
-        delete ||= true
-      }
-    end
-    GroupRows.new(@create_sql, dbs)
+    get_dbs
+    extract_sql_from_dbs
+    get_create_sql
+
+    # TODO
+    create_temp_db
+    load_sql
+  end
+
+  def create_temp_db
+    # write system(createdb tempname)
+  end
+
+  def load_sql
+    # write system(psql <sqls.join)
   end
 
   def get_dbs
@@ -33,8 +33,10 @@ class GroupRows
   end
 
   def extract_sql_from_dbs
-    @sqls ||= @dbs.map{|f|
-      IO.popen("echo '.dump Messages' | sqlite3 '#{f}' | sed 's/Messages/messages/;s/BLOG/text/;s/INTEGER/bigint/g' | tail +2").read
+    @sqls ||= @dbs.each_with_index.map{|db,i|
+      sql = IO.popen("echo '.dump Messages' | sqlite3 '#{db}' | sed 's/Messages/messages/;s/BLOG/text/;s/INTEGER/bigint/g' | tail +2").read.tap{|s|
+        remove_create(s) if i > 0
+      }
     }
   end
 
@@ -42,19 +44,15 @@ class GroupRows
     @create_sql ||= sqls.first[/^create table.*/i]
   end
 
-  def remove_creates
-    delete = nil
-    @sqls.each do |f|
-      f.gsub!(/^create table.*/i, '') if delete
-      delete ||= true
-    end
+  def remove_create(f)
+    f.gsub!(/^create table.*/i, '')
   end
 end
 
 gr = GroupRows.new('/Users/jearsh/Library/Appli*ort/Skype/*/main.db')
 
 puts gr.sqls.count
-puts gr.sqls.map{|x| x.split(/\n/)[1]}
+puts gr.sqls.map{|x| x.split(/\n/).first(2).map{|z| z[0,30]}}
 
 
 
